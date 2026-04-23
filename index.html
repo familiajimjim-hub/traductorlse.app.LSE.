@@ -11,23 +11,27 @@
             align-items: center; justify-content: center; background: #ffffff;
             font-family: 'DM Serif Display', serif; position: relative; overflow: hidden;
         }
-        /* ACUARELAS DE FONDO */
         body::before {
             content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: radial-gradient(circle at 10% 10%, rgba(162,217,255,0.4), transparent 45%),
                         radial-gradient(circle at 90% 90%, rgba(255,194,224,0.4), transparent 45%);
             z-index: -1;
         }
-        
         h1 { color: #1a252f; font-size: 3rem; margin: 10px 0; font-weight: bold; }
         .subtitle { color: #444; font-size: 1.1rem; margin-bottom: 25px; font-style: italic; font-family: sans-serif; }
 
         #video-viewport { 
-            width: 320px; height: 320px; background: #000; border-radius: 30px; 
+            width: 320px; height: 320px; background: #fff; border-radius: 30px; 
             box-shadow: 0 20px 40px rgba(0,0,0,0.3); overflow: hidden; 
             margin-bottom: 20px; border: 5px solid #fff;
+            position: relative;
         }
-        video { width: 100%; height: 100%; object-fit: cover; }
+        /* Estilo para que el video ocupe todo y no parpadee */
+        video { 
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%; object-fit: cover;
+            background: #fff; /* Cambiado a blanco para evitar flash negro */
+        }
         
         #transcript-area { 
             color: #1a252f; font-size: 1.4rem; font-weight: bold; font-family: sans-serif;
@@ -98,36 +102,48 @@
         async function processText(text) {
             const palabrasGrabadas = ["hola", "adios", "gracias"];
             const listaPalabras = text.split(/\s+/);
+            let colaReproduccion = [];
 
+            // Creamos la lista de videos que hay que reproducir
             for (let palabra of listaPalabras) {
                 if (palabrasGrabadas.includes(palabra)) {
-                    // CAMBIADO A .mp4
-                    await playVideo(`LSE/videos/${palabra}.mp4`);
+                    colaReproduccion.push(`LSE/videos/${palabra}.mp4`);
                 } else {
                     const letras = palabra.split("");
                     for (let letra of letras) {
-                        // CAMBIADO A .mp4
-                        await playVideo(`LSE/videos/${letra}.mp4`);
+                        colaReproduccion.push(`LSE/videos/${letra}.mp4`);
                     }
                 }
+            }
+
+            // Reproducimos la cola de uno en uno
+            for (let i = 0; i < colaReproduccion.length; i++) {
+                await playVideo(colaReproduccion[i]);
             }
         }
 
         function playVideo(src) {
             return new Promise((resolve) => {
+                // Truco: Ponemos el fondo del contenedor igual al del video 
+                // para que el cambio de fuente sea imperceptible
                 videoPlayer.src = src;
-                videoPlayer.load(); // Fuerza la carga del nuevo archivo mp4
-                videoPlayer.onended = () => resolve();
-                videoPlayer.onerror = () => {
-                    console.log("Error o no existe:", src);
-                    resolve(); // Si no existe el vídeo de una letra, salta a la siguiente
+                
+                // Forzamos carga
+                videoPlayer.load();
+
+                videoPlayer.oncanplaythrough = () => {
+                    videoPlayer.play().catch(resolve);
                 };
-                videoPlayer.play().catch(err => {
-                    console.log("Error de reproducción", err);
+
+                videoPlayer.onended = () => {
                     resolve();
-                });
+                };
+
+                videoPlayer.onerror = () => {
+                    console.log("No existe:", src);
+                    resolve();
+                };
             });
-            
         }
     </script>
 </body>
