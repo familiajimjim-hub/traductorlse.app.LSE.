@@ -20,19 +20,25 @@
         h1 { color: #1a252f; font-size: 3rem; margin: 10px 0; font-weight: bold; }
         .subtitle { color: #444; font-size: 1.1rem; margin-bottom: 25px; font-style: italic; font-family: sans-serif; }
 
+        /* CONTENEDOR RÍGIDO */
         #video-viewport { 
             width: 320px; height: 320px; background: #fff; border-radius: 30px; 
             box-shadow: 0 20px 40px rgba(0,0,0,0.3); overflow: hidden; 
-            margin-bottom: 20px; border: 5px solid #fff;
-            position: relative;
-        }
-        /* Estilo para que el video ocupe todo y no parpadee */
-        video { 
-            position: absolute; top: 0; left: 0;
-            width: 100%; height: 100%; object-fit: cover;
-            background: #fff; /* Cambiado a blanco para evitar flash negro */
+            margin-bottom: 20px; border: 5px solid #fff; position: relative;
         }
         
+        /* AJUSTE DE VIDEO UNIFORME */
+        video { 
+            position: absolute; top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            /* El secreto: 'cover' recorta y ajusta para que siempre se vea igual */
+            object-fit: cover; 
+            opacity: 0; 
+            transition: opacity 0.15s; 
+            background: #fff;
+        }
+        video.active { opacity: 1; z-index: 10; }
+
         #transcript-area { 
             color: #1a252f; font-size: 1.4rem; font-weight: bold; font-family: sans-serif;
             margin-bottom: 30px; text-align: center; min-height: 1.5em; width: 85%;
@@ -53,7 +59,8 @@
     <div class="subtitle">Traductor LSE Personalizado</div>
     
     <div id="video-viewport">
-        <video id="lse-video" playsinline muted></video>
+        <video id="v1" class="active" playsinline muted></video>
+        <video id="v2" playsinline muted></video>
     </div>
 
     <div id="transcript-area">Presiona abajo para traducir</div>
@@ -61,10 +68,14 @@
     <button id="main-btn" onclick="toggleRecognition()">HABLAR AHORA</button>
 
     <script>
-        const videoPlayer = document.getElementById('lse-video');
+        const v1 = document.getElementById('v1');
+        const v2 = document.getElementById('v2');
         const transcriptArea = document.getElementById('transcript-area');
         const mainBtn = document.getElementById('main-btn');
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        let currentPlayer = v1;
+        let nextPlayer = v2;
         let recognition;
         let isRecording = false;
 
@@ -79,13 +90,11 @@
                 isRecording = true;
                 mainBtn.innerText = "DETENER";
                 mainBtn.classList.add('recording');
-                transcriptArea.innerText = "Escuchando...";
             };
             recognition.onresult = (event) => {
-                const originalText = event.results[0][0].transcript.toLowerCase().trim();
-                const textoLimpio = limpiarTexto(originalText);
-                transcriptArea.innerText = '"' + originalText + '"';
-                processText(textoLimpio);
+                const text = event.results[0][0].transcript.toLowerCase().trim();
+                transcriptArea.innerText = '"' + text + '"';
+                processText(limpiarTexto(text));
             };
             recognition.onend = () => {
                 isRecording = false;
@@ -95,54 +104,55 @@
         }
 
         function toggleRecognition() {
-            if (!recognition) return alert("Usa Google Chrome");
+            if (!recognition) return alert("Usa Chrome");
             isRecording ? recognition.stop() : recognition.start();
         }
 
         async function processText(text) {
             const palabrasGrabadas = ["hola", "adios", "gracias"];
             const listaPalabras = text.split(/\s+/);
-            let colaReproduccion = [];
+            let cola = [];
 
-            // Creamos la lista de videos que hay que reproducir
-            for (let palabra of listaPalabras) {
-                if (palabrasGrabadas.includes(palabra)) {
-                    colaReproduccion.push(`LSE/videos/${palabra}.mp4`);
+            for (let p of listaPalabras) {
+                if (palabrasGrabadas.includes(p)) {
+                    cola.push(`LSE/videos/${p}.mp4`);
                 } else {
-                    const letras = palabra.split("");
-                    for (let letra of letras) {
-                        colaReproduccion.push(`LSE/videos/${letra}.mp4`);
-                    }
+                    p.split("").forEach(l => {
+                        if(l.match(/[a-z]/i)) cola.push(`LSE/videos/${l}.mp4`);
+                    });
                 }
             }
 
-            // Reproducimos la cola de uno en uno
-            for (let i = 0; i < colaReproduccion.length; i++) {
-                await playVideo(colaReproduccion[i]);
+            for (let i = 0; i < cola.length; i++) {
+                // Precargamos el siguiente video mientras suena el actual
+                if (i + 1 < cola.length) {
+                    nextPlayer.src = cola[i + 1];
+                    nextPlayer.load();
+                }
+                await playCurrent(cola[i]);
             }
         }
 
-        function playVideo(src) {
+        function playCurrent(src) {
             return new Promise((resolve) => {
-                // Truco: Ponemos el fondo del contenedor igual al del video 
-                // para que el cambio de fuente sea imperceptible
-                videoPlayer.src = src;
-                
-                // Forzamos carga
-                videoPlayer.load();
+                if (currentPlayer.src.indexOf(src) === -1) {
+                    currentPlayer.src = src;
+                    currentPlayer.load();
+                }
 
-                videoPlayer.oncanplaythrough = () => {
-                    videoPlayer.play().catch(resolve);
-                };
+                currentPlayer.onended = () => {
+                    // Cambio rápido de jugador
+                    currentPlayer.classList.remove('active');
+                    nextPlayer.classList.add('active');
 
-                videoPlayer.onended = () => {
+                    let temp = currentPlayer;
+                    currentPlayer = nextPlayer;
+                    nextPlayer = temp;
                     resolve();
                 };
 
-                videoPlayer.onerror = () => {
-                    console.log("No existe:", src);
-                    resolve();
-                };
+                currentPlayer.onerror = resolve;
+                currentPlayer.play().catch(resolve);
             });
         }
     </script>
